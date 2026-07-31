@@ -1,6 +1,9 @@
+import mongoose from "mongoose";
 import User from "../models/User.js";
 
-// Get all users
+// =========================
+// Get All Users
+// =========================
 export const getUsers = async (req, res) => {
   try {
     const users = await User.find()
@@ -9,16 +12,28 @@ export const getUsers = async (req, res) => {
 
     res.status(200).json(users);
   } catch (error) {
+    console.error("Get users error:", error);
+
     res.status(500).json({
-      message: error.message,
+      message: error.message || "Failed to load users",
     });
   }
 };
 
-// Delete a user
+// =========================
+// Delete User
+// =========================
 export const deleteUser = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
+
+    const user = await User.findById(id);
 
     if (!user) {
       return res.status(404).json({
@@ -32,14 +47,16 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    await User.findByIdAndDelete(req.params.id);
+    await User.findByIdAndDelete(id);
 
     res.status(200).json({
       message: "User deleted successfully",
     });
   } catch (error) {
+    console.error("Delete user error:", error);
+
     res.status(500).json({
-      message: error.message,
+      message: error.message || "Failed to delete user",
     });
   }
 };

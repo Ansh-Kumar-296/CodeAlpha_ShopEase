@@ -23,7 +23,12 @@ export const getProducts = async (
 // Search Products
 // =========================
 export const searchProducts = async (keyword) => {
-  const res = await API.get(`/products/search?keyword=${keyword}`);
+  const res = await API.get("/products", {
+    params: {
+      search: keyword,
+    },
+  });
+
   return res.data;
 };
 

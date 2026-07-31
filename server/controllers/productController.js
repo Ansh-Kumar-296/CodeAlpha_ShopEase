@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Product from "../models/Product.js";
 
 // ============================
@@ -14,35 +15,54 @@ export const getProducts = async (req, res) => {
     } = req.query;
 
     const filter = {};
+    const searchText = search.trim();
 
-    // Search
-    if (search.trim()) {
-      filter.name = {
-        $regex: search,
-        $options: "i",
-      };
+    if (searchText) {
+      filter.$or = [
+        {
+          name: {
+            $regex: searchText,
+            $options: "i",
+          },
+        },
+        {
+          description: {
+            $regex: searchText,
+            $options: "i",
+          },
+        },
+        {
+          category: {
+            $regex: searchText,
+            $options: "i",
+          },
+        },
+      ];
     }
 
-    // Category
     if (category !== "All") {
       filter.category = category;
     }
 
-    // Price Filter
-    if (minPrice || maxPrice) {
+    if (minPrice !== undefined || maxPrice !== undefined) {
       filter.price = {};
 
-      if (minPrice) {
+      if (
+        minPrice !== undefined &&
+        minPrice !== ""
+      ) {
         filter.price.$gte = Number(minPrice);
       }
 
-      if (maxPrice) {
+      if (
+        maxPrice !== undefined &&
+        maxPrice !== ""
+      ) {
         filter.price.$lte = Number(maxPrice);
       }
     }
 
-    // Sorting
-    let sortOption = {};
+    let sortOption;
 
     switch (sort) {
       case "priceLow":
@@ -68,14 +88,20 @@ export const getProducts = async (req, res) => {
       case "newest":
       default:
         sortOption = { createdAt: -1 };
+        break;
     }
 
-    const products = await Product.find(filter).sort(sortOption);
+    const products = await Product.find(filter).sort(
+      sortOption
+    );
 
     res.status(200).json(products);
   } catch (error) {
+    console.error("Get products error:", error);
+
     res.status(500).json({
-      message: error.message,
+      message:
+        error.message || "Failed to load products",
     });
   }
 };
@@ -85,7 +111,15 @@ export const getProducts = async (req, res) => {
 // ============================
 export const getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: "Invalid product ID",
+      });
+    }
+
+    const product = await Product.findById(id);
 
     if (!product) {
       return res.status(404).json({
@@ -93,10 +127,13 @@ export const getProductById = async (req, res) => {
       });
     }
 
-    res.json(product);
+    res.status(200).json(product);
   } catch (error) {
+    console.error("Get product error:", error);
+
     res.status(500).json({
-      message: error.message,
+      message:
+        error.message || "Failed to load product",
     });
   }
 };
@@ -106,12 +143,44 @@ export const getProductById = async (req, res) => {
 // ============================
 export const addProduct = async (req, res) => {
   try {
-    const product = await Product.create(req.body);
+    const {
+      name,
+      price,
+      category,
+      description,
+      image,
+      stock,
+    } = req.body;
+
+    if (
+      !name ||
+      price === undefined ||
+      !category ||
+      !description ||
+      !image ||
+      stock === undefined
+    ) {
+      return res.status(400).json({
+        message: "All product fields are required",
+      });
+    }
+
+    const product = await Product.create({
+      name: name.trim(),
+      price: Number(price),
+      category: category.trim(),
+      description: description.trim(),
+      image: image.trim(),
+      stock: Number(stock),
+    });
 
     res.status(201).json(product);
   } catch (error) {
+    console.error("Add product error:", error);
+
     res.status(500).json({
-      message: error.message,
+      message:
+        error.message || "Failed to add product",
     });
   }
 };
@@ -121,9 +190,27 @@ export const addProduct = async (req, res) => {
 // ============================
 export const updateProduct = async (req, res) => {
   try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: "Invalid product ID",
+      });
+    }
+
+    const updateData = { ...req.body };
+
+    if (updateData.price !== undefined) {
+      updateData.price = Number(updateData.price);
+    }
+
+    if (updateData.stock !== undefined) {
+      updateData.stock = Number(updateData.stock);
+    }
+
     const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      req.body,
+      id,
+      updateData,
       {
         new: true,
         runValidators: true,
@@ -136,10 +223,13 @@ export const updateProduct = async (req, res) => {
       });
     }
 
-    res.json(product);
+    res.status(200).json(product);
   } catch (error) {
+    console.error("Update product error:", error);
+
     res.status(500).json({
-      message: error.message,
+      message:
+        error.message || "Failed to update product",
     });
   }
 };
@@ -149,7 +239,15 @@ export const updateProduct = async (req, res) => {
 // ============================
 export const deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndDelete(req.params.id);
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: "Invalid product ID",
+      });
+    }
+
+    const product = await Product.findByIdAndDelete(id);
 
     if (!product) {
       return res.status(404).json({
@@ -157,12 +255,15 @@ export const deleteProduct = async (req, res) => {
       });
     }
 
-    res.json({
+    res.status(200).json({
       message: "Product deleted successfully",
     });
   } catch (error) {
+    console.error("Delete product error:", error);
+
     res.status(500).json({
-      message: error.message,
+      message:
+        error.message || "Failed to delete product",
     });
   }
 };

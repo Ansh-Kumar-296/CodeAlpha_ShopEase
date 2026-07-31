@@ -7,6 +7,7 @@ const wishlistSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+
     productId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
@@ -15,6 +16,17 @@ const wishlistSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  }
+);
+
+// Prevent duplicate wishlist items
+wishlistSchema.index(
+  {
+    userId: 1,
+    productId: 1,
+  },
+  {
+    unique: true,
   }
 );
 

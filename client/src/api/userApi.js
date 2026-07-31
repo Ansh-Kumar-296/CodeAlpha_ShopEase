@@ -1,30 +1,17 @@
-import axios from "axios";
+import API from "./api";
 
-const API_URL = "http://localhost:5000/api/users";
-
+// =========================
+// Get All Users (Admin)
+// =========================
 export const getUsers = async () => {
-  const token = localStorage.getItem("token");
-
-  const response = await axios.get(API_URL, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
+  const response = await API.get("/users");
   return response.data;
 };
 
+// =========================
+// Delete User (Admin)
+// =========================
 export const deleteUser = async (id) => {
-  const token = localStorage.getItem("token");
-
-  const response = await axios.delete(
-    `${API_URL}/${id}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }
-  );
-
+  const response = await API.delete(`/users/${id}`);
   return response.data;
 };

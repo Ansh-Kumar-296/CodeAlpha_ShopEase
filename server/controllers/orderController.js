@@ -1,35 +1,89 @@
+import mongoose from "mongoose";
+
 import Order from "../models/Order.js";
 import Cart from "../models/Cart.js";
+import Product from "../models/Product.js";
 
+// =========================
 // Place Order
+// =========================
 export const placeOrder = async (req, res) => {
   try {
-    const { userId, shippingAddress, paymentMethod } = req.body;
+    const {
+      userId,
+      shippingAddress,
+      paymentMethod,
+    } = req.body;
 
-    const cartItems = await Cart.find({ userId }).populate("productId");
+    if (!userId) {
+      return res.status(400).json({
+        message: "User ID is required",
+      });
+    }
 
-    if (cartItems.length === 0) {
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
+
+    if (
+      !shippingAddress?.fullName ||
+      !shippingAddress?.phone ||
+      !shippingAddress?.address ||
+      !shippingAddress?.city ||
+      !shippingAddress?.state ||
+      !shippingAddress?.pincode
+    ) {
+      return res.status(400).json({
+        message: "Complete shipping address is required",
+      });
+    }
+
+    const cartItems = await Cart.find({
+      userId,
+    }).populate("productId");
+
+    const validCartItems = cartItems.filter(
+      (item) => item.productId
+    );
+
+    if (validCartItems.length === 0) {
       return res.status(400).json({
         message: "Cart is empty",
       });
     }
 
-    const products = cartItems.map((item) => ({
+    for (const item of validCartItems) {
+      if (item.productId.stock < item.quantity) {
+        return res.status(400).json({
+          message: `Only ${item.productId.stock} unit(s) of ${item.productId.name} are available`,
+        });
+      }
+    }
+
+    const products = validCartItems.map((item) => ({
       productId: item.productId._id,
       quantity: item.quantity,
-      price: item.productId.price,
+      price: Number(item.productId.price),
     }));
 
-    const subtotal = cartItems.reduce(
-      (sum, item) => sum + item.productId.price * item.quantity,
+    const subtotal = validCartItems.reduce(
+      (sum, item) =>
+        sum +
+        Number(item.productId.price) *
+          Number(item.quantity),
       0
     );
 
+    // Same shipping rule as cart controller
     const shipping =
-      subtotal === 0 ? 0 : subtotal >= 1000 ? 0 : 99;
+      subtotal === 0 || subtotal >= 5000 ? 0 : 99;
 
     const tax =
-      subtotal === 0 ? 0 : Math.round(subtotal * 0.05);
+      subtotal === 0
+        ? 0
+        : Math.round(subtotal * 0.05);
 
     const total = subtotal + shipping + tax;
 
@@ -41,38 +95,67 @@ export const placeOrder = async (req, res) => {
       shipping,
       tax,
       total,
-      paymentMethod,
+      paymentMethod: paymentMethod || "COD",
     });
 
-    // Clear user's cart
-    await Cart.deleteMany({ userId });
+    for (const item of validCartItems) {
+      await Product.findByIdAndUpdate(
+        item.productId._id,
+        {
+          $inc: {
+            stock: -item.quantity,
+          },
+        }
+      );
+    }
+
+    await Cart.deleteMany({
+      userId,
+    });
 
     res.status(201).json(order);
   } catch (err) {
+    console.error("Place order error:", err);
+
     res.status(500).json({
-      message: err.message,
+      message: err.message || "Failed to place order",
     });
   }
 };
 
-// Get My Orders
+// =========================
+// Get Logged-in User Orders
+// =========================
 export const getMyOrders = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const orders = await Order.find({ userId })
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
+    }
+
+    const orders = await Order.find({
+      userId,
+    })
       .populate("products.productId")
       .sort({ createdAt: -1 });
 
-    res.json(orders);
+    res.status(200).json(orders);
   } catch (err) {
+    console.error("Get user orders error:", err);
+
     res.status(500).json({
-      message: err.message,
+      message:
+        err.message || "Failed to load user orders",
     });
   }
 };
 
+// =========================
 // Get All Orders (Admin)
+// =========================
 export const getAllOrders = async (req, res) => {
   try {
     const orders = await Order.find()
@@ -80,23 +163,57 @@ export const getAllOrders = async (req, res) => {
       .populate("products.productId")
       .sort({ createdAt: -1 });
 
-    res.json(orders);
+    res.status(200).json(orders);
   } catch (err) {
+    console.error("Get all orders error:", err);
+
     res.status(500).json({
-      message: err.message,
+      message: err.message || "Failed to load orders",
     });
   }
 };
 
-// Update Order Status
-export const updateOrderStatus = async (req, res) => {
+// =========================
+// Update Order Status (Admin)
+// =========================
+export const updateOrderStatus = async (
+  req,
+  res
+) => {
   try {
     const { orderStatus } = req.body;
 
+    const allowedStatuses = [
+      "Pending",
+      "Processing",
+      "Shipped",
+      "Delivered",
+      "Cancelled",
+    ];
+
+    if (!allowedStatuses.includes(orderStatus)) {
+      return res.status(400).json({
+        message: "Invalid order status",
+      });
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(req.params.id)
+    ) {
+      return res.status(400).json({
+        message: "Invalid order ID",
+      });
+    }
+
     const order = await Order.findByIdAndUpdate(
       req.params.id,
-      { orderStatus },
-      { new: true }
+      {
+        orderStatus,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
     );
 
     if (!order) {
@@ -105,10 +222,13 @@ export const updateOrderStatus = async (req, res) => {
       });
     }
 
-    res.json(order);
+    res.status(200).json(order);
   } catch (err) {
+    console.error("Update order status error:", err);
+
     res.status(500).json({
-      message: err.message,
+      message:
+        err.message || "Failed to update order status",
     });
   }
 };
